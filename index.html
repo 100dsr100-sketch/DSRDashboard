@@ -1,0 +1,797 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>DSR Dashboard</title>
+<link rel="icon" type="image/svg+xml"
+ href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' fill='%23000000'/%3E%3Crect x='7' y='7' width='50' height='50' rx='9' fill='none' stroke='%23E8B200' stroke-width='2.5'/%3E%3Cpolyline points='12,42 22,36 30,39 38,25 46,30 54,16' fill='none' stroke='%2322c55e' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon.svg">
+<meta name="theme-color" content="#000000">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Dashboard">
+<style>
+  :root{
+    --gold:#E8B200;
+    --bg:#000000;
+    --panel:#080808;
+    --card:#000000;
+    --ink:#ececec;
+    --muted:#8b8b8b;
+    --grid:#1b1b1b;
+    --line:#242424;
+    --up:#22c55e;
+    --down:#ef4444;
+    --blue:#5b9bd5;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;background:var(--bg);}
+  body{
+    font-family:"Segoe UI",Roboto,Tahoma,Arial,sans-serif;
+    color:var(--ink);-webkit-text-size-adjust:100%;
+    padding:
+      calc(env(safe-area-inset-top) + 8px)
+      calc(env(safe-area-inset-right) + 8px)
+      calc(env(safe-area-inset-bottom) + 8px)
+      calc(env(safe-area-inset-left) + 8px);
+  }
+  .frame{
+    max-width:480px;min-height:calc(100vh - 16px);margin:0 auto;
+    background:var(--panel);border:2px solid var(--gold);border-radius:8px;
+    display:flex;flex-direction:column;
+  }
+  .banner{
+    position:relative;display:flex;align-items:center;gap:9px;
+    padding:11px 12px 10px;border-bottom:2px solid var(--gold);
+  }
+  .banner .logo{width:30px;height:30px;flex:0 0 30px;}
+  .banner h1{margin:0;font-size:17px;letter-spacing:.5px;flex:1;}
+  .version{color:var(--gold);font-weight:700;font-size:10px;}
+  .nav{display:flex;gap:0;border-bottom:2px solid var(--gold);}
+  .nav button{
+    flex:1;background:#000;border:none;border-right:1px solid var(--line);
+    color:var(--muted);font-family:inherit;font-size:12.5px;font-weight:600;
+    padding:9px 4px;cursor:pointer;letter-spacing:.3px;
+  }
+  .nav button:last-child{border-right:none;flex:0 0 46px;font-size:15px;}
+  .nav button.active{color:var(--gold);background:#0c0b07;box-shadow:inset 0 -2px 0 var(--gold);}
+  .statusbar{
+    display:flex;justify-content:space-between;align-items:center;gap:8px;
+    padding:6px 12px;font-size:11px;color:var(--muted);border-bottom:1px solid var(--grid);
+  }
+  .statusbar button{
+    background:none;border:1px solid var(--line);color:var(--ink);
+    border-radius:4px;padding:3px 9px;font-size:11px;cursor:pointer;font-family:inherit;
+  }
+  main{padding:10px 10px 4px;flex:1;}
+  .screen{display:none;}
+  .screen.active{display:block;}
+
+  /* ---- market chart card ---- */
+  .card{
+    border:2px solid var(--gold);border-radius:6px;padding:9px 7px 7px;
+    margin-bottom:11px;background:var(--card);
+  }
+  .card h2{margin:0 0 1px;font-size:13px;font-weight:700;padding:0 3px;}
+  .card .sym{color:var(--muted);font-weight:600;font-size:11px;}
+  .ranges{display:flex;justify-content:space-between;font-size:11.5px;padding:6px 2px 7px;}
+  .ranges button{
+    background:none;border:none;color:var(--muted);font:inherit;font-size:11.5px;
+    padding:2px 3px;cursor:pointer;border-radius:4px;
+  }
+  .ranges button.active{color:var(--gold);font-weight:700;}
+  .quote{padding:0 3px 3px;min-height:44px;}
+  .quote .price{font-size:22px;font-weight:700;}
+  .quote .chg{font-size:12.5px;margin-left:7px;}
+  .quote .chg.up{color:var(--up);}
+  .quote .chg.down{color:var(--down);}
+  .quote .when{display:block;font-size:10.5px;color:var(--muted);margin-top:2px;}
+  .chartwrap{width:100%;}
+  .chartwrap svg{display:block;width:100%;height:auto;}
+  .badge{font-size:9.5px;padding:1px 5px;border-radius:3px;border:1px solid var(--line);color:var(--muted);margin-left:6px;vertical-align:2px;}
+  .badge.sample{color:var(--gold);border-color:var(--gold);}
+  .badge.cached{color:var(--blue);border-color:var(--blue);}
+
+  /* ---- portfolio ---- */
+  .pcard{
+    border:2px solid var(--gold);border-radius:6px;margin-bottom:11px;background:var(--card);
+    padding:10px 11px;
+  }
+  .pcard h3{margin:0 0 8px;font-size:13.5px;color:var(--gold);letter-spacing:.4px;}
+  .pline{display:flex;justify-content:space-between;font-size:12.5px;padding:3px 0;border-bottom:1px dashed var(--line);}
+  .pline:last-child{border-bottom:none;}
+  .pline .lbl{color:var(--muted);}
+  .pline .val{font-variant-numeric:tabular-nums;}
+  .pline.total{font-weight:700;font-size:14px;padding-top:7px;border-bottom:none;}
+  .pline.total .val{color:var(--up);}
+  .pline.neg .val{color:var(--down);}
+  .netcard{border-color:var(--gold);}
+  .netcard .pline.total .val{color:var(--gold);font-size:16px;}
+  details.holdings{margin-top:7px;}
+  details.holdings summary{font-size:11.5px;color:var(--blue);cursor:pointer;}
+  details.holdings .hrow{display:flex;justify-content:space-between;font-size:11.5px;padding:2px 0;color:var(--muted);}
+
+  /* ---- settings ---- */
+  .setgrp{border:1px solid var(--line);border-radius:6px;margin-bottom:12px;padding:10px 11px;}
+  .setgrp h3{margin:0 0 9px;font-size:13px;color:var(--gold);}
+  .fld{display:flex;align-items:center;gap:8px;margin-bottom:7px;}
+  .fld label{flex:1;font-size:12.5px;color:var(--muted);}
+  .fld input{
+    width:130px;font-size:13px;padding:6px 8px;background:#101010;color:var(--ink);
+    border:1px solid var(--line);border-radius:4px;font-family:inherit;text-align:right;
+  }
+  .fld input.txt{text-align:left;flex:1;width:auto;}
+  input:-webkit-autofill,input:-webkit-autofill:focus{
+    -webkit-box-shadow:0 0 0 40px #101010 inset;-webkit-text-fill-color:var(--ink);caret-color:var(--ink);
+  }
+  .mktrow{display:flex;gap:6px;margin-bottom:6px;}
+  .mktrow input{font-size:12px;padding:5px 7px;background:#101010;color:var(--ink);border:1px solid var(--line);border-radius:4px;font-family:inherit;}
+  .mktrow input.s{width:78px;text-transform:uppercase;}
+  .mktrow input.n{flex:1;}
+  .mktrow button{background:none;border:1px solid var(--line);color:var(--down);border-radius:4px;width:30px;cursor:pointer;font-size:14px;}
+  .setgrp textarea{
+    width:100%;min-height:70px;font-size:12px;padding:7px 8px;background:#101010;color:var(--ink);
+    border:1px solid var(--line);border-radius:4px;font-family:inherit;resize:vertical;margin:4px 0;
+  }
+  .setgrp .hint{font-size:11px;color:var(--muted);display:block;margin:2px 0;}
+  .setgrp .msg{font-size:11px;margin-top:4px;min-height:1.2em;}
+  .setgrp .msg.ok{color:var(--up);} .setgrp .msg.err{color:var(--down);}
+  .cryptogrid{max-height:280px;overflow-y:auto;border:1px solid var(--line);border-radius:4px;padding:6px;}
+  .cryptogrid .fld{margin-bottom:5px;}
+  .cryptogrid .fld label{font-size:11.5px;}
+  .cryptogrid .fld input{width:150px;}
+  .btnrow{display:flex;gap:8px;margin-top:6px;}
+  .btnrow button{
+    flex:1;font-family:inherit;font-size:13px;font-weight:600;padding:9px;border-radius:5px;cursor:pointer;
+    background:var(--gold);color:#111;border:none;
+  }
+  .btnrow button.ghost{background:none;color:var(--ink);border:1px solid var(--line);}
+  .addbtn{background:none;border:1px dashed var(--line);color:var(--gold);border-radius:4px;padding:7px;width:100%;cursor:pointer;font-family:inherit;font-size:12px;margin-top:2px;}
+  footer{text-align:center;font-size:10px;color:var(--muted);padding:7px 0 10px;}
+</style>
+</head>
+<body>
+<div class="frame">
+  <div class="banner">
+    <svg class="logo" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" aria-hidden="true">
+      <rect width="64" height="64" rx="12" fill="#000000"/>
+      <rect x="3.5" y="3.5" width="57" height="57" rx="10" fill="none" stroke="#E8B200" stroke-width="2.5"/>
+      <polyline points="10,44 20,38 27,41 35,26 44,31 54,16" fill="none" stroke="#22c55e"
+                stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+      <circle cx="54" cy="16" r="3" fill="#22c55e"/>
+    </svg>
+    <h1>DSR Dashboard</h1>
+    <span class="version">Version 1b</span>
+  </div>
+
+  <div class="nav">
+    <button data-screen="markets" class="active">Markets</button>
+    <button data-screen="portfolio">Portfolio</button>
+    <button data-screen="settings">&#9881;</button>
+  </div>
+
+  <div class="statusbar">
+    <span id="status">Ready</span>
+    <button id="refreshBtn">&#8635; Refresh</button>
+  </div>
+
+  <main>
+    <section class="screen active" id="screen-markets"></section>
+    <section class="screen" id="screen-portfolio"></section>
+    <section class="screen" id="screen-settings"></section>
+  </main>
+
+  <footer>DSR Dashboard &bull; all values in AUD</footer>
+</div>
+
+<script>
+"use strict";
+const $ = s => document.querySelector(s);
+const LS = {
+  get(k, d){ try{ const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); }catch(e){ return d; } },
+  set(k, v){ try{ localStorage.setItem(k, JSON.stringify(v)); }catch(e){} }
+};
+
+/* ================= config ================= */
+// Yahoo's chart API blocks browser CORS, so requests are relayed through a
+// public proxy. All are raced at once (Promise.any) and the first success
+// wins. If you run your own relay (e.g. a personal Cloudflare Worker), add
+// it here - it will win the race and this becomes rock solid.
+const PROXIES = [
+  u => 'https://api.allorigins.win/raw?url=' + encodeURIComponent(u),
+  u => 'https://api.codetabs.com/v1/proxy/?quest=' + encodeURIComponent(u),
+  u => 'https://thingproxy.freeboard.io/fetch/' + u
+];
+
+const DEFAULT_MARKETS = [
+  { symbol: '^IXIC',  name: 'Nasdaq Composite' },
+  { symbol: 'NDQ.AX', name: 'BetaShares NASDAQ 100' },
+  { symbol: 'IOO.AX', name: 'iShares Global 100' },
+  { symbol: 'SOXX',   name: 'iShares Semiconductor' }
+];
+
+// [displayName, symbol, coingeckoId, defaultUnits] - seeded from
+// C:\Lazarus Projects\Dashboard\UPortfolioData.pas
+const CRYPTO_DEFS = [
+  ['Bitcoin','BTC','bitcoin',0.50114423],
+  ['Ethereum','ETH','ethereum',10.60728654],
+  ['Solana','SOL','solana',39.16718479],
+  ['TRON','TRX','tron',6106.03479617],
+  ['BNB','BNB','binancecoin',2.92792531],
+  ['XRP','XRP','ripple',491.00544098],
+  ['ChainLink','LINK','chainlink',36.73899936],
+  ['Dogecoin','DOGE','dogecoin',4841.27890756],
+  ['Stellar Lumens','XLM','stellar',1192.41828914],
+  ['Litecoin','LTC','litecoin',4.32527904],
+  ['Shiba Inu','SHIB','shiba-inu',27877312.59],
+  ['Uniswap','UNI','uniswap',30.97780701],
+  ['Ravencoin','RVN','ravencoin',24955.32673404],
+  ['Avalanche','AVAX','avalanche-2',10.29109362],
+  ['Polygon Ecosystem Token','POL','matic-network',622.99951719],
+  ['Cardano','ADA','cardano',226.66649606],
+  ['Terra Classic','LUNC','terra-luna',777488.11264471],
+  ['Algorand','ALGO','algorand',377.86386842],
+  ['Polkadot','DOT','polkadot',35.46242902],
+  ['Beam','BEAMX','beam-2',15915.38517],
+  ['Santos FC Fan Token','SANTOS','santos-fc-fan-token',41.66328428],
+  ['Decentraland','MANA','decentraland',117.29960252],
+  ['Sonic','S','sonic-3',275.2187161],
+  ['Internet Computer','ICP','internet-computer',3.00638768],
+  ['Ethereum PoW','ETHW','ethereum-pow-iou',10.60110438],
+  ['Terra','LUNA','terra-luna-2',27.12145239],
+  ['USDC','USDC','usd-coin',0.28219505],
+  ['Gravity','G','g-token',31.2210798],
+  ['Manchester City Fan Token','CITY','manchester-city-fan-token',0.11118339],
+  ['Sologenic','SOLO','solo-coin',2.2339009]
+];
+
+const DEFAULTS = {
+  p1: { NDQ: 4077, IOO: 325 },
+  p2: { NDQ: 1287, IOO: 51 },
+  margin: 259654.79,
+  superann: 575640.06,
+  house: {
+    url: 'https://www.realestate.com.au/property/6-reading-st-port-macquarie-nsw-2444/',
+    price: '$878,025',
+    isDefault: true
+  }
+};
+
+// interval -> Yahoo params, from UMiniStockChart.MiniIntervalYahooParams
+const RANGES = ['1D','5D','1M','6M','YTD','1Y','5Y','Max'];
+const RANGE_MAP = {
+  '1D' : { i:'1m',  r:'5d',  days:1 },
+  '5D' : { i:'5m',  r:'1mo', days:5 },
+  '1M' : { i:'30m', r:'1mo', days:0 },
+  '6M' : { i:'1h',  r:'6mo', days:0 },
+  'YTD': { i:'1h',  r:'ytd', days:0 },
+  '1Y' : { i:'1h',  r:'1y',  days:0 },
+  '5Y' : { i:'1d',  r:'5y',  days:0 },
+  'Max': { i:'1wk', r:'max', days:0 }
+};
+
+/* ================= state ================= */
+const state = {
+  markets:  LS.get('dsr-dash-markets', DEFAULT_MARKETS),
+  p1:       LS.get('dsr-dash-p1', DEFAULTS.p1),
+  p2:       LS.get('dsr-dash-p2', DEFAULTS.p2),
+  margin:   LS.get('dsr-dash-margin', DEFAULTS.margin),
+  superann: LS.get('dsr-dash-super', DEFAULTS.superann),
+  house:    LS.get('dsr-dash-house', { ...DEFAULTS.house }),
+  crypto:   LS.get('dsr-dash-crypto', Object.fromEntries(CRYPTO_DEFS.map(c => [c[1], c[3]])))
+};
+function saveState(){
+  LS.set('dsr-dash-markets', state.markets);
+  LS.set('dsr-dash-p1', state.p1);
+  LS.set('dsr-dash-p2', state.p2);
+  LS.set('dsr-dash-margin', state.margin);
+  LS.set('dsr-dash-super', state.superann);
+  LS.set('dsr-dash-house', state.house);
+  LS.set('dsr-dash-crypto', state.crypto);
+}
+
+/* ================= data layer ================= */
+const fxCache = {};        // 'USD' -> AUD per 1 USD
+const chartCache = {};      // in-memory, session
+
+async function proxiedText(url, timeoutMs = 7000){
+  const attempt = wrap => {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), timeoutMs);
+    return fetch(wrap(url), { signal: ctrl.signal })
+      .then(res => { if (!res.ok) throw new Error('HTTP ' + res.status); return res.text(); })
+      .finally(() => clearTimeout(t));
+  };
+  return Promise.any(PROXIES.map(attempt));   // first proxy to succeed wins
+}
+async function proxiedJSON(url, timeoutMs = 7000){
+  return JSON.parse(await proxiedText(url, timeoutMs));
+}
+
+// -> { currency, price, prevClose, points:[{t,c}] }
+async function fetchYahooChart(symbol, range){
+  const m = RANGE_MAP[range];
+  const url = 'https://query1.finance.yahoo.com/v8/finance/chart/' +
+    encodeURIComponent(symbol) + '?interval=' + m.i + '&range=' + m.r + '&events=div&includePrePost=false';
+  const js = await proxiedJSON(url);
+  const r = js && js.chart && js.chart.result && js.chart.result[0];
+  if (!r) throw new Error((js && js.chart && js.chart.error && js.chart.error.description) || 'no data');
+  const meta = r.meta || {};
+  const ts = r.timestamp || [];
+  const q = r.indicators && r.indicators.quote && r.indicators.quote[0] || {};
+  const closes = q.close || [];
+  let points = [];
+  for (let i = 0; i < ts.length; i++){
+    const c = closes[i];
+    if (c != null && isFinite(c)) points.push({ t: ts[i], c: c });
+  }
+  if (m.days){
+    // keep only the last N distinct local dates present (mirrors
+    // UMiniStockChart.FilterLastNTradingDays)
+    const dayKey = t => { const d = new Date(t * 1000); return d.getFullYear()+'-'+d.getMonth()+'-'+d.getDate(); };
+    const seen = [];
+    for (let i = points.length - 1; i >= 0; i--){
+      const k = dayKey(points[i].t);
+      if (!seen.includes(k)){ seen.push(k); if (seen.length > m.days) { points = points.slice(i + 1); break; } }
+    }
+  }
+  return {
+    currency: (meta.currency || '').toUpperCase(),
+    price: meta.regularMarketPrice,
+    prevClose: meta.chartPreviousClose,
+    points
+  };
+}
+
+async function fxToAUD(cur){
+  cur = (cur || '').toUpperCase();
+  if (!cur || cur === 'AUD') return 1;
+  if (fxCache[cur] != null) return fxCache[cur];
+  try{
+    const c = await fetchYahooChart('AUD' + cur + '=X', '1D');   // e.g. AUDUSD=X = USD per 1 AUD
+    const p = c.price || (c.points.length && c.points[c.points.length - 1].c);
+    if (p > 0){ fxCache[cur] = 1 / p; return fxCache[cur]; }
+  }catch(e){}
+  fxCache[cur] = null;
+  return null;
+}
+
+// full chart, converted to AUD; falls back to cache then synthetic
+async function getChartAUD(symbol, range){
+  const key = symbol + '|' + range;
+  try{
+    const c = await fetchYahooChart(symbol, range);
+    let rate = 1, conv = false;
+    if (c.currency && c.currency !== 'AUD' && !/=X$/i.test(symbol)){
+      const r = await fxToAUD(c.currency);
+      if (r){ rate = r; conv = true; }
+    }
+    const out = {
+      points: c.points.map(p => ({ t: p.t, c: p.c * rate })),
+      price: (c.price || (c.points.length && c.points[c.points.length - 1].c) || 0) * rate,
+      prevClose: (c.prevClose || 0) * rate,
+      src: 'live', currency: conv ? c.currency + '\u2192AUD' : (c.currency || 'AUD')
+    };
+    if (!out.prevClose && out.points.length) out.prevClose = out.points[0].c;
+    chartCache[key] = { ...out, at: Date.now() };
+    LS.set('dsr-dash-cache-' + key, chartCache[key]);
+    return out;
+  }catch(e){
+    const cached = chartCache[key] || LS.get('dsr-dash-cache-' + key, null);
+    if (cached && cached.points && cached.points.length)
+      return { ...cached, src: 'cached' };
+    return { ...sampleSeries(symbol, range), src: 'sample' };
+  }
+}
+
+async function fetchCryptoAUD(ids){
+  const url = 'https://api.coingecko.com/api/v3/simple/price?ids=' + ids.join(',') + '&vs_currencies=aud';
+  const js = await fetch(url).then(r => r.json());
+  const out = {};
+  ids.forEach(id => { out[id] = (js && js[id] && js[id].aud) || 0; });
+  return out;
+}
+
+/* ---- house price (realestate.com.au estimate) ----
+   Ported from C:\Lazarus Projects\Dashboard\UHouseScraper.pas. The desktop
+   app renders the page in a real embedded browser then reads innerText;
+   from a static PWA the best we can do is a proxied raw-HTML fetch, which
+   realestate.com.au's bot protection usually blocks - so this fails soft
+   and the Settings "paste page text" box is the reliable path. */
+function extractDollarAmount(text){
+  const m = /\$[\d,]+/.exec(text || '');
+  if (!m) return '';
+  return m[0].replace(/,+$/, '');
+}
+function scrapePriceFromText(text){
+  const lt = (text || '').toLowerCase();
+  let markers = ['based on data we have available', 'the estimated property value of',
+                 'estimated value', 'property value estimate'];
+  let p = -1, used = '';
+  for (const mk of markers){ p = lt.indexOf(mk); if (p >= 0){ used = mk; break; } }
+  if (p < 0){
+    const d = extractDollarAmount(text);
+    return d ? { sentence: 'Estimated value ' + d, amount: d } : { sentence: '', amount: '' };
+  }
+  let end = p + used.length;
+  while (end < text.length && end - p < 400){
+    if (text[end] === '.' && text[end - 1] >= '0' && text[end - 1] <= '9'){ end++; break; }
+    end++;
+  }
+  const sentence = text.slice(p, end).trim();
+  return { sentence, amount: extractDollarAmount(sentence) };
+}
+async function fetchHousePrice(url){
+  const html = await proxiedText(url, 9000);
+  const txt = html.replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g, ' ');
+  const r = scrapePriceFromText(txt);
+  if (!r.amount) throw new Error('no price found in page (likely a bot-check page) - use paste box');
+  return r;
+}
+
+/* ---- synthetic fallback (seeded per symbol+range) ---- */
+function mulberry32(a){ return function(){ a|=0; a=a+0x6D2B79F5|0; let t=Math.imul(a^a>>>15,1|a); t=t+Math.imul(t^t>>>7,61|t)^t; return ((t^t>>>14)>>>0)/4294967296; }; }
+function hashStr(s){ let h=2166136261; for(let i=0;i<s.length;i++){ h^=s.charCodeAt(i); h=Math.imul(h,16777619); } return h>>>0; }
+const SAMPLE_BASE = { '^IXIC': 26800, 'NDQ.AX': 59.41, 'IOO.AX': 165.2, 'SOXX': 385 };
+function sampleSeries(symbol, range){
+  const cfg = { '1D':[78,.0016], '5D':[120,.004], '1M':[130,.006], '6M':[150,.009],
+                'YTD':[160,.010], '1Y':[170,.011], '5Y':[200,.015], 'Max':[220,.017] }[range] || [78,.0016];
+  const rnd = mulberry32(hashStr(symbol + '|' + range));
+  const base = SAMPLE_BASE[symbol] || 100;
+  const now = Math.floor(Date.now() / 1000);
+  const stepSec = { '1D':300,'5D':1800,'1M':3600,'6M':21600,'YTD':43200,'1Y':43200,'5Y':604800,'Max':1209600 }[range] || 3600;
+  let p = base; const points = [];
+  for (let i = 0; i < cfg[0]; i++){
+    p = p * (1 + 0.0003 + (rnd() - 0.5) * cfg[1] * 2);
+    points.push({ t: now - (cfg[0] - i) * stepSec, c: p });
+  }
+  return { points, price: points[points.length - 1].c, prevClose: base, currency: 'AUD (sample)' };
+}
+
+/* ================= formatting ================= */
+const AUD0 = new Intl.NumberFormat('en-AU', { style:'currency', currency:'AUD', maximumFractionDigits:0 });
+const AUD2 = new Intl.NumberFormat('en-AU', { style:'currency', currency:'AUD', maximumFractionDigits:2 });
+const NUM  = new Intl.NumberFormat('en-AU', { maximumFractionDigits:2 });
+function money(v){ return Math.abs(v) >= 1000 ? AUD0.format(v) : AUD2.format(v); }
+function priceStr(v){ const dp = v < 20 ? 3 : (v < 2000 ? 2 : 0); return '$' + v.toLocaleString('en-AU',{minimumFractionDigits:dp,maximumFractionDigits:dp}); }
+
+function axisLabels(points, range){
+  if (!points.length) return [];
+  const n = points.length, idx = [0, Math.floor(n/4), Math.floor(n/2), Math.floor(3*n/4), n-1];
+  const uniq = [...new Set(idx)];
+  return uniq.map(i => {
+    const d = new Date(points[i].t * 1000);
+    let txt;
+    if (range === '1D' || range === '5D')
+      txt = d.toLocaleTimeString('en-AU', { hour:'numeric', minute:'2-digit' });
+    else if (range === '1M' || range === '6M' || range === 'YTD' || range === '1Y')
+      txt = d.toLocaleDateString('en-AU', { day:'numeric', month:'short' });
+    else txt = String(d.getFullYear());
+    return { pos: i / (n - 1), txt };
+  });
+}
+
+/* ================= chart renderer ================= */
+function chartSVG(data, range, symbol){
+  const pts = data.points;
+  if (!pts.length) return '<svg viewBox="0 0 440 210"></svg>';
+  const W = 440, H = 210, padL = 52, padR = 12, padT = 8, padB = 20;
+  const vals = pts.map(p => p.c);
+  const pc = data.prevClose || vals[0];
+  const lo = Math.min(pc, ...vals), hi = Math.max(pc, ...vals), span = (hi - lo) || 1;
+  const X = i => padL + (i / (pts.length - 1)) * (W - padL - padR);
+  const Y = v => padT + (1 - (v - lo) / span) * (H - padT - padB);
+  const last = vals[vals.length - 1], chg = last - pc, up = chg >= 0;
+  const col = up ? '#22c55e' : '#ef4444';
+
+  let g = '';
+  for (let s = 0; s <= 4; s++){
+    const v = lo + span * s / 4, y = Y(v).toFixed(1);
+    g += `<line x1="${padL}" y1="${y}" x2="${W-padR}" y2="${y}" stroke="#1b1b1b"/>`;
+    g += `<text x="${padL-6}" y="${(+y+3).toFixed(1)}" text-anchor="end" font-size="9" fill="#8b8b8b">${priceStr(v)}</text>`;
+  }
+  axisLabels(pts, range).forEach(l => {
+    const x = padL + l.pos * (W - padL - padR);
+    const a = l.pos < 0.02 ? 'start' : (l.pos > 0.98 ? 'end' : 'middle');
+    g += `<text x="${x.toFixed(1)}" y="${H-6}" text-anchor="${a}" font-size="9" fill="#8b8b8b">${l.txt}</text>`;
+  });
+  const pcY = Y(pc).toFixed(1);
+  g += `<line x1="${padL}" y1="${pcY}" x2="${W-padR}" y2="${pcY}" stroke="#8b8b8b" stroke-dasharray="3 3" opacity="0.7"/>`;
+  g += `<text x="${W-padR}" y="${(+pcY-4).toFixed(1)}" text-anchor="end" font-size="9" fill="#8b8b8b">Prev close ${priceStr(pc)}</text>`;
+
+  const line = pts.map((p,i) => (i?'L':'M') + X(i).toFixed(1) + ' ' + Y(p.c).toFixed(1)).join(' ');
+  const area = line + ` L ${X(pts.length-1).toFixed(1)} ${H-padB} L ${X(0).toFixed(1)} ${H-padB} Z`;
+  const gid = 'grad' + hashStr(symbol + range).toString(36);
+  return `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
+    <defs><linearGradient id="${gid}" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="${col}" stop-opacity="0.22"/><stop offset="1" stop-color="${col}" stop-opacity="0"/>
+    </linearGradient></defs>
+    ${g}
+    <path d="${area}" fill="url(#${gid})"/>
+    <path d="${line}" fill="none" stroke="${col}" stroke-width="1.6" stroke-linejoin="round"/>
+    <circle cx="${X(pts.length-1).toFixed(1)}" cy="${Y(last).toFixed(1)}" r="2.6" fill="${col}"/>
+    <text x="${W-padR}" y="${H-padB-8}" text-anchor="end" font-size="19" font-weight="700" fill="#E8B200" opacity="0.9" letter-spacing="1">${symbol}</text>
+  </svg>`;
+}
+
+/* ================= markets screen ================= */
+function renderMarkets(){
+  const wrap = $('#screen-markets');
+  wrap.innerHTML = '';
+  state.markets.forEach(mk => {
+    const card = document.createElement('div');
+    card.className = 'card';
+    card.dataset.symbol = mk.symbol;
+    card.dataset.range = '1D';
+    card.innerHTML =
+      `<h2>${mk.name} <span class="sym">${mk.symbol}</span></h2>
+       <div class="ranges">${RANGES.map(r => `<button data-r="${r}"${r==='1D'?' class="active"':''}>${r}</button>`).join('')}</div>
+       <div class="quote"><span class="when">Loading&hellip;</span></div>
+       <div class="chartwrap"></div>`;
+    card.querySelector('.ranges').addEventListener('click', e => {
+      const b = e.target.closest('button'); if (!b) return;
+      card.dataset.range = b.dataset.r;
+      card.querySelectorAll('.ranges button').forEach(x => x.classList.toggle('active', x === b));
+      loadCard(card);
+    });
+    wrap.appendChild(card);
+    loadCard(card);
+  });
+}
+
+async function loadCard(card){
+  const symbol = card.dataset.symbol, range = card.dataset.range;
+  const qEl = card.querySelector('.quote'), cEl = card.querySelector('.chartwrap');
+  qEl.innerHTML = '<span class="when">Loading&hellip;</span>';
+  const data = await getChartAUD(symbol, range);
+  const last = data.price, pc = data.prevClose || (data.points[0] && data.points[0].c) || last;
+  const chg = last - pc, pct = pc ? chg / pc * 100 : 0, up = chg >= 0;
+  const dp = last < 20 ? 3 : (last < 2000 ? 2 : 2);
+  const badge = data.src === 'sample' ? '<span class="badge sample">SAMPLE</span>'
+              : data.src === 'cached' ? `<span class="badge cached">cached ${new Date(data.at||Date.now()).toLocaleTimeString('en-AU',{hour:'numeric',minute:'2-digit'})}</span>`
+              : '';
+  qEl.innerHTML =
+    `<span class="price">${priceStr(last)}</span>` +
+    `<span class="chg ${up?'up':'down'}">${up?'+':''}${pct.toFixed(2)}% (${up?'+':''}${chg.toFixed(dp)})</span>${badge}` +
+    `<span class="when">${range} &bull; ${data.currency || 'AUD'}</span>`;
+  cEl.innerHTML = chartSVG(data, range, symbol);
+}
+
+/* ================= portfolio screen ================= */
+let lastQuotes = null;   // { NDQ, IOO, cryptoTotal, cryptoRows }
+
+async function renderPortfolio(){
+  const wrap = $('#screen-portfolio');
+  wrap.innerHTML = '<div class="pcard"><h3>Fetching prices&hellip;</h3></div>';
+
+  let ndq = 0, ioo = 0, cryptoPrices = {};
+  const results = await Promise.allSettled([
+    getChartAUD('NDQ.AX', '1D'),
+    getChartAUD('IOO.AX', '1D'),
+    fetchCryptoAUD(CRYPTO_DEFS.map(c => c[2]))
+  ]);
+  if (results[0].status === 'fulfilled') ndq = results[0].value.price;
+  if (results[1].status === 'fulfilled') ioo = results[1].value.price;
+  if (results[2].status === 'fulfilled') cryptoPrices = results[2].value;
+
+  const cryptoRows = CRYPTO_DEFS.map(c => {
+    const units = +state.crypto[c[1]] || 0;
+    const val = units * (cryptoPrices[c[2]] || 0);
+    return { name: c[0], sym: c[1], units, val };
+  }).sort((a, b) => b.val - a.val);
+  const cryptoTotal = cryptoRows.reduce((s, r) => s + r.val, 0);
+
+  const pv = p => ({
+    ndqVal: (+p.NDQ || 0) * ndq,
+    iooVal: (+p.IOO || 0) * ioo,
+    get total(){ return this.ndqVal + this.iooVal; }
+  });
+  const v1 = pv(state.p1), v2 = pv(state.p2);
+  const stocksTotal = v1.total + v2.total;
+  const houseVal = parseFloat(String(state.house.price).replace(/[^0-9.]/g, '')) || 0;
+  const net = stocksTotal + cryptoTotal + houseVal + (+state.superann || 0) - (+state.margin || 0);
+
+  const portCard = (title, p, v) => `
+    <div class="pcard">
+      <h3>${title}</h3>
+      <div class="pline"><span class="lbl">NDQ.AX &times; ${NUM.format(+p.NDQ||0)} @ ${priceStr(ndq||0)}</span><span class="val">${money(v.ndqVal)}</span></div>
+      <div class="pline"><span class="lbl">IOO.AX &times; ${NUM.format(+p.IOO||0)} @ ${priceStr(ioo||0)}</span><span class="val">${money(v.iooVal)}</span></div>
+      <div class="pline total"><span class="lbl">Portfolio total</span><span class="val">${money(v.total)}</span></div>
+    </div>`;
+
+  const topRows = cryptoRows.slice(0, 10).map(r =>
+    `<div class="hrow"><span>${r.sym} &times; ${NUM.format(r.units)}</span><span>${money(r.val)}</span></div>`).join('');
+  const restVal = cryptoRows.slice(10).reduce((s, r) => s + r.val, 0);
+
+  wrap.innerHTML =
+    portCard('Portfolio 1', state.p1, v1) +
+    portCard('Portfolio 2', state.p2, v2) +
+    `<div class="pcard">
+       <h3>Crypto Portfolio</h3>
+       <div class="pline"><span class="lbl">${CRYPTO_DEFS.length} coins</span><span class="val"></span></div>
+       <div class="pline total"><span class="lbl">Crypto total</span><span class="val">${money(cryptoTotal)}</span></div>
+       <details class="holdings"><summary>Show holdings</summary>
+         ${topRows}
+         ${restVal > 0 ? `<div class="hrow"><span>+ ${cryptoRows.length - 10} more</span><span>${money(restVal)}</span></div>` : ''}
+       </details>
+     </div>` +
+    `<div class="pcard">
+       <h3>Property</h3>
+       <div class="pline"><span class="lbl">6 Reading St, Port Macquarie</span><span class="val">${money(houseVal)}</span></div>
+       <div class="pline"><span class="lbl" style="font-size:11px">${state.house.isDefault ? 'seeded estimate — update in Settings' : 'realestate.com.au estimate'}</span><span class="val"></span></div>
+     </div>` +
+    `<div class="pcard netcard">
+       <h3>Net Position</h3>
+       <div class="pline"><span class="lbl">Stocks (P1 + P2)</span><span class="val">${money(stocksTotal)}</span></div>
+       <div class="pline"><span class="lbl">Crypto</span><span class="val">${money(cryptoTotal)}</span></div>
+       <div class="pline"><span class="lbl">Property</span><span class="val">${money(houseVal)}</span></div>
+       <div class="pline"><span class="lbl">Superannuation</span><span class="val">${money(+state.superann||0)}</span></div>
+       <div class="pline neg"><span class="lbl">Margin loan</span><span class="val">-${money(+state.margin||0)}</span></div>
+       <div class="pline total"><span class="lbl">Net worth</span><span class="val">${money(net)}</span></div>
+     </div>`;
+}
+
+/* ================= settings screen ================= */
+function renderSettings(){
+  const wrap = $('#screen-settings');
+  wrap.innerHTML = `
+    <div class="setgrp" id="set-markets">
+      <h3>Markets page</h3>
+      <div id="mktrows"></div>
+      <button class="addbtn" id="addMkt">+ add symbol</button>
+    </div>
+    <div class="setgrp">
+      <h3>Portfolio 1 &mdash; units held</h3>
+      <div class="fld"><label>NDQ.AX</label><input type="number" step="any" id="p1ndq" value="${state.p1.NDQ}"></div>
+      <div class="fld"><label>IOO.AX</label><input type="number" step="any" id="p1ioo" value="${state.p1.IOO}"></div>
+    </div>
+    <div class="setgrp">
+      <h3>Portfolio 2 &mdash; units held</h3>
+      <div class="fld"><label>NDQ.AX</label><input type="number" step="any" id="p2ndq" value="${state.p2.NDQ}"></div>
+      <div class="fld"><label>IOO.AX</label><input type="number" step="any" id="p2ioo" value="${state.p2.IOO}"></div>
+    </div>
+    <div class="setgrp">
+      <h3>Other balances</h3>
+      <div class="fld"><label>Margin loan ($)</label><input type="number" step="any" id="margin" value="${state.margin}"></div>
+      <div class="fld"><label>Superannuation ($)</label><input type="number" step="any" id="superann" value="${state.superann}"></div>
+    </div>
+    <div class="setgrp">
+      <h3>Property &mdash; 6 Reading St</h3>
+      <span class="hint">Listing URL</span>
+      <input class="txt" id="houseUrl" style="width:100%" value="${state.house.url}">
+      <div class="btnrow">
+        <button class="ghost" id="openHouse">Open page &#8599;</button>
+        <button class="ghost" id="fetchHouse">Try auto-fetch</button>
+      </div>
+      <div class="fld"><label>Current estimate</label><input class="txt" id="housePrice" value="${state.house.price}"></div>
+      <span class="hint">realestate.com.au blocks automated fetches, so if auto-fetch fails: open the page, copy the estimate sentence (or the whole page text), paste below, tap Extract.</span>
+      <textarea id="housePaste" placeholder="Paste the estimate sentence or page text here&hellip;"></textarea>
+      <button class="addbtn" id="extractHouse">Extract $ from pasted text</button>
+      <div class="msg" id="houseMsg"></div>
+    </div>
+    <div class="setgrp">
+      <h3>Crypto portfolio &mdash; units held</h3>
+      <div class="cryptogrid" id="cryptogrid"></div>
+    </div>
+    <div class="btnrow">
+      <button id="saveSet">Save</button>
+      <button class="ghost" id="resetSet">Reset all to defaults</button>
+    </div>
+  `;
+
+  const mktrows = $('#mktrows');
+  function addMktRow(sym = '', name = ''){
+    const row = document.createElement('div');
+    row.className = 'mktrow';
+    row.innerHTML = `<input class="s" placeholder="SYM" value="${sym}"><input class="n" placeholder="Name" value="${name}"><button>&times;</button>`;
+    row.querySelector('button').onclick = () => row.remove();
+    mktrows.appendChild(row);
+  }
+  state.markets.forEach(m => addMktRow(m.symbol, m.name));
+  $('#addMkt').onclick = () => addMktRow();
+
+  const cg = $('#cryptogrid');
+  CRYPTO_DEFS.forEach(c => {
+    const f = document.createElement('div');
+    f.className = 'fld';
+    f.innerHTML = `<label>${c[0]} <span style="color:#8b8b8b">${c[1]}</span></label>` +
+      `<input type="number" step="any" data-coin="${c[1]}" value="${state.crypto[c[1]] ?? c[3]}">`;
+    cg.appendChild(f);
+  });
+
+  const hmsg = $('#houseMsg');
+  let houseTouched = false;
+  $('#housePrice').addEventListener('input', () => { houseTouched = true; });
+  $('#openHouse').onclick = () => window.open($('#houseUrl').value.trim(), '_blank', 'noopener');
+  $('#extractHouse').onclick = () => {
+    const r = scrapePriceFromText($('#housePaste').value);
+    if (r.amount){
+      $('#housePrice').value = r.amount; houseTouched = true;
+      hmsg.className = 'msg ok'; hmsg.textContent = 'Found ' + r.amount + (r.sentence ? ' — "' + r.sentence.slice(0, 90) + '…"' : '') + '. Tap Save to keep it.';
+    } else {
+      hmsg.className = 'msg err'; hmsg.textContent = 'No $ figure found in that text.';
+    }
+  };
+  $('#fetchHouse').onclick = async () => {
+    hmsg.className = 'msg'; hmsg.textContent = 'Fetching…';
+    try{
+      const r = await fetchHousePrice($('#houseUrl').value.trim());
+      $('#housePrice').value = r.amount; houseTouched = true;
+      hmsg.className = 'msg ok'; hmsg.textContent = 'Fetched ' + r.amount + '. Tap Save to keep it.';
+    }catch(e){
+      hmsg.className = 'msg err'; hmsg.textContent = String(e.message || e) + ' — use the paste box.';
+    }
+  };
+
+  $('#saveSet').onclick = () => {
+    state.markets = [...mktrows.querySelectorAll('.mktrow')].map(r => ({
+      symbol: r.querySelector('.s').value.trim(),
+      name: r.querySelector('.n').value.trim() || r.querySelector('.s').value.trim()
+    })).filter(m => m.symbol);
+    state.p1 = { NDQ: +$('#p1ndq').value || 0, IOO: +$('#p1ioo').value || 0 };
+    state.p2 = { NDQ: +$('#p2ndq').value || 0, IOO: +$('#p2ioo').value || 0 };
+    state.margin = +$('#margin').value || 0;
+    state.superann = +$('#superann').value || 0;
+    const hp = extractDollarAmount($('#housePrice').value) || $('#housePrice').value.trim();
+    state.house = {
+      url: $('#houseUrl').value.trim() || DEFAULTS.house.url,
+      price: hp || DEFAULTS.house.price,
+      isDefault: houseTouched ? false : state.house.isDefault
+    };
+    cg.querySelectorAll('input[data-coin]').forEach(i => { state.crypto[i.dataset.coin] = +i.value || 0; });
+    saveState();
+    setStatus('Settings saved');
+    show('markets');
+  };
+  $('#resetSet').onclick = () => {
+    state.markets = DEFAULT_MARKETS.map(m => ({ ...m }));
+    state.p1 = { ...DEFAULTS.p1 }; state.p2 = { ...DEFAULTS.p2 };
+    state.margin = DEFAULTS.margin; state.superann = DEFAULTS.superann;
+    state.house = { ...DEFAULTS.house };
+    state.crypto = Object.fromEntries(CRYPTO_DEFS.map(c => [c[1], c[3]]));
+    saveState();
+    renderSettings();
+    setStatus('Reset to defaults');
+  };
+}
+
+/* ================= nav ================= */
+function setStatus(t){ $('#status').textContent = t; }
+function show(name){
+  document.querySelectorAll('.nav button').forEach(b => b.classList.toggle('active', b.dataset.screen === name));
+  document.querySelectorAll('.screen').forEach(s => s.classList.toggle('active', s.id === 'screen-' + name));
+  if (name === 'markets') renderMarkets();
+  else if (name === 'portfolio') renderPortfolio();
+  else if (name === 'settings') renderSettings();
+}
+document.querySelector('.nav').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (b) show(b.dataset.screen);
+});
+$('#refreshBtn').addEventListener('click', () => {
+  for (const k in chartCache) delete chartCache[k];
+  for (const k in fxCache) delete fxCache[k];
+  const active = document.querySelector('.nav button.active').dataset.screen;
+  setStatus('Refreshing\u2026');
+  show(active);
+  setTimeout(() => setStatus('Updated ' + new Date().toLocaleTimeString('en-AU', { hour:'numeric', minute:'2-digit' })), 400);
+});
+
+let rt;
+addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(() => {
+  if (document.querySelector('.nav button.active').dataset.screen === 'markets')
+    document.querySelectorAll('#screen-markets .card').forEach(c => {
+      const d = chartCache[c.dataset.symbol + '|' + c.dataset.range];
+      if (d) c.querySelector('.chartwrap').innerHTML = chartSVG(d, c.dataset.range, c.dataset.symbol);
+    });
+}, 150); });
+
+if ('serviceWorker' in navigator)
+  addEventListener('load', () => navigator.serviceWorker.register('service-worker.js').catch(() => {}));
+
+show('markets');
+</script>
+</body>
+</html>
