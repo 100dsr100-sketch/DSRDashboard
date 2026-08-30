@@ -165,7 +165,7 @@
       <circle cx="54" cy="16" r="3" fill="#22c55e"/>
     </svg>
     <h1>DSR Dashboard</h1>
-    <span class="version">Version 1c</span>
+    <span class="version">Version 1d</span>
   </div>
 
   <div class="nav">
@@ -804,8 +804,19 @@ addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(() => {
     });
 }, 150); });
 
-if ('serviceWorker' in navigator)
-  addEventListener('load', () => navigator.serviceWorker.register('service-worker.js').catch(() => {}));
+if ('serviceWorker' in navigator){
+  let reloadedForSW = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (reloadedForSW) return;
+    reloadedForSW = true;
+    location.reload();            // a fresh service worker took over -> load the new shell
+  });
+  addEventListener('load', () => {
+    navigator.serviceWorker.register('service-worker.js')
+      .then(reg => { reg.update(); setInterval(() => reg.update(), 60 * 60 * 1000); })
+      .catch(() => {});
+  });
+}
 
 show('markets');
 </script>
