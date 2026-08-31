@@ -4,80 +4,60 @@ Yahoo Finance blocks browser requests (CORS). The app relays them through a
 proxy. The free public proxies it ships with are unreliable — when they're
 down, Markets/Portfolio show cached or SAMPLE data.
 
-This is a tiny Cloudflare Worker that does the relay itself. Free tier =
-100,000 requests/day (the app uses a few dozen). Setup is ~10 minutes, once.
+The fix is a tiny Cloudflare Worker that does the relay itself. It runs on
+the **same free Cloudflare account** as the LiveChat translit worker
+(`100dsr100@gmail.com`, subdomain `100dsr100`) — nothing new to sign up for.
+It's a **separate worker** (`dsr-yahoo`), so it can't affect LiveChat.
+
+Free tier = 100,000 requests/day; the app uses a few dozen.
 
 ---
 
-## 1. Create the Worker
+## Deploy (one command)
 
-1. Sign up / log in: **https://dash.cloudflare.com/sign-up** (free, no card).
-2. In the dashboard sidebar: **Compute (Workers)** → **Workers & Pages** →
-   **Create application** → **Create Worker**.
-3. Name it `dsr-yahoo` (the URL becomes
-   `https://dsr-yahoo.<your-subdomain>.workers.dev`). **Deploy**.
-4. Click **Edit code**, select all, delete, paste the code below, then
-   **Deploy** again.
+The worker is ready in the [`worker/`](worker/) folder. From a terminal on
+the PC that has wrangler logged in for this account:
 
-```js
-export default {
-  async fetch(request) {
-    const cors = {
-      "Access-Control-Allow-Origin": "*",
-      "Access-Control-Allow-Methods": "GET, OPTIONS",
-      "Access-Control-Allow-Headers": "*",
-    };
-    if (request.method === "OPTIONS") return new Response(null, { headers: cors });
-
-    const target = new URL(request.url).searchParams.get("url");
-    if (!target || !/^https:\/\/(query[12]\.finance|[a-z0-9.]+\.)?yahoo\.com\//i.test(target)) {
-      return new Response("bad or missing ?url=", { status: 400, headers: cors });
-    }
-
-    let upstream;
-    try {
-      upstream = await fetch(target, {
-        headers: {
-          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) DSRDashboard/1",
-          "Accept": "application/json,text/plain,*/*",
-        },
-        cf: { cacheTtl: 20, cacheEverything: true },
-      });
-    } catch (e) {
-      return new Response("upstream fetch failed: " + e, { status: 502, headers: cors });
-    }
-
-    const body = await upstream.text();
-    return new Response(body, {
-      status: upstream.status,
-      headers: {
-        ...cors,
-        "Content-Type": upstream.headers.get("Content-Type") || "application/json",
-        "Cache-Control": "public, max-age=20",
-      },
-    });
-  },
-};
+```
+cd "C:\HTML Apps\DSR Dashboard\worker"
+npx wrangler deploy
 ```
 
+That publishes it at:
+
+```
+https://dsr-yahoo.100dsr100.workers.dev
+```
+
+The app (v1f+) is **already pre-set** to use that URL — no further step.
+If wrangler isn't logged in: `npx wrangler login` first.
+
+To redeploy after editing `worker/worker.js`, run `npx wrangler deploy`
+again from the same folder.
+
 ---
 
-## 2. Point the app at it
+## If the workers.dev URL differs
 
-1. Copy your Worker URL, e.g. `https://dsr-yahoo.dsr.workers.dev`
-2. Open the app → **⚙ Settings** → **Data relay** → paste the URL
-3. Tap **Test relay** — it should say *"Relay works — NDQ.AX $59.xx"*
-4. Tap **Save**
-
-The URL is stored on the device only (localStorage). "Reset all to defaults"
-does **not** clear it. No code change or redeploy of the app is needed.
+The app stores the relay URL on the device (Settings → **Data relay**), not
+in code. If your deploy lands on a different hostname, just paste that into
+the Data relay field and tap **Test relay** → **Save**. "Reset all to
+defaults" does not clear it.
 
 ---
 
 ## Quick check
 
-Open this in a browser (substitute your subdomain) — you should see raw JSON:
+Open this in a browser — you should see raw JSON, not an error:
 
 ```
-https://dsr-yahoo.<your-subdomain>.workers.dev/?url=https://query1.finance.yahoo.com/v8/finance/chart/NDQ.AX?interval=1m%26range=1d
+https://dsr-yahoo.100dsr100.workers.dev/?url=https://query1.finance.yahoo.com/v8/finance/chart/NDQ.AX?interval=1m%26range=1d
 ```
+
+---
+
+## worker/worker.js (for reference)
+
+`?url=` passthrough, locked to `yahoo.com` hosts, adds
+`Access-Control-Allow-Origin: *`, 20-second edge cache. Full source is in
+`worker/worker.js`.
