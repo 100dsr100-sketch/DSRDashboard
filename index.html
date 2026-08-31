@@ -125,9 +125,12 @@
     border:1px solid var(--line);border-radius:4px;font-family:inherit;text-align:right;
   }
   .fld input.txt{text-align:left;flex:1;width:auto;}
-  input:-webkit-autofill,input:-webkit-autofill:focus{
-    -webkit-box-shadow:0 0 0 40px #101010 inset;-webkit-text-fill-color:var(--ink);caret-color:var(--ink);
+  input:-webkit-autofill,input:-webkit-autofill:hover,input:-webkit-autofill:focus,input:-webkit-autofill:active,
+  input:autofill{
+    -webkit-box-shadow:0 0 0 40px #101010 inset !important;box-shadow:0 0 0 40px #101010 inset !important;
+    -webkit-text-fill-color:var(--ink) !important;caret-color:var(--ink);transition:background-color 9999s ease-out 0s;
   }
+  .setgrp input.txt,#houseUrl,#relayUrl{background:#101010;color:var(--ink);}
   .mktrow{display:flex;gap:6px;margin-bottom:6px;}
   .mktrow input{font-size:12px;padding:5px 7px;background:#101010;color:var(--ink);border:1px solid var(--line);border-radius:4px;font-family:inherit;}
   .mktrow input.s{width:78px;text-transform:uppercase;}
@@ -165,7 +168,7 @@
       <circle cx="54" cy="16" r="3" fill="#22c55e"/>
     </svg>
     <h1>DSR Dashboard</h1>
-    <span class="version">Version 1d</span>
+    <span class="version">Version 1e</span>
   </div>
 
   <div class="nav">
@@ -197,13 +200,16 @@ const LS = {
 };
 
 /* ================= config ================= */
-// Yahoo's chart API blocks browser CORS, so requests are relayed through a
-// public proxy. All are raced at once (Promise.any) and the first success
-// wins. If you run your own relay (e.g. a personal Cloudflare Worker), add
-// it here - it will win the race and this becomes rock solid.
+// Yahoo's chart API blocks browser CORS, so requests are relayed. These free
+// public relays are raced together (first success wins) but they are ALL
+// unreliable - when they're down the app shows cached/sample data. The real
+// fix is your own Cloudflare Worker: deploy it (see WORKER.md in the repo)
+// and paste its URL into Settings > "Data relay". That entry is tried first
+// and makes the feed rock solid - no code change or redeploy needed.
 const PROXIES = [
   u => 'https://api.allorigins.win/raw?url=' + encodeURIComponent(u),
   u => 'https://api.codetabs.com/v1/proxy/?quest=' + encodeURIComponent(u),
+  u => 'https://corsproxy.io/?url=' + encodeURIComponent(u),
   u => 'https://thingproxy.freeboard.io/fetch/' + u
 ];
 
@@ -282,6 +288,7 @@ const state = {
   margin:   LS.get('dsr-dash-margin', DEFAULTS.margin),
   superann: LS.get('dsr-dash-super', DEFAULTS.superann),
   house:    LS.get('dsr-dash-house', { ...DEFAULTS.house }),
+  relay:    LS.get('dsr-dash-relay', ''),
   crypto:   LS.get('dsr-dash-crypto', Object.fromEntries(CRYPTO_DEFS.map(c => [c[1], c[3]])))
 };
 function saveState(){
@@ -291,6 +298,7 @@ function saveState(){
   LS.set('dsr-dash-margin', state.margin);
   LS.set('dsr-dash-super', state.superann);
   LS.set('dsr-dash-house', state.house);
+  LS.set('dsr-dash-relay', state.relay);
   LS.set('dsr-dash-crypto', state.crypto);
 }
 
@@ -298,6 +306,11 @@ function saveState(){
 const fxCache = {};        // 'USD' -> AUD per 1 USD
 const chartCache = {};      // in-memory, session
 
+function relayWrap(u){
+  const b = (state.relay || '').trim();
+  if (!b) return null;
+  return b.replace(/\/+$/, '') + '/?url=' + encodeURIComponent(u);
+}
 async function proxiedText(url, timeoutMs = 7000){
   const attempt = wrap => {
     const ctrl = new AbortController();
@@ -306,7 +319,9 @@ async function proxiedText(url, timeoutMs = 7000){
       .then(res => { if (!res.ok) throw new Error('HTTP ' + res.status); return res.text(); })
       .finally(() => clearTimeout(t));
   };
-  return Promise.any(PROXIES.map(attempt));   // first proxy to succeed wins
+  const wraps = PROXIES.slice();
+  if (relayWrap(url)) wraps.unshift(relayWrap);       // your own relay is tried alongside, and wins if healthy
+  return Promise.any(wraps.map(attempt));             // first to succeed wins
 }
 async function proxiedJSON(url, timeoutMs = 7000){
   return JSON.parse(await proxiedText(url, timeoutMs));
@@ -341,6 +356,7 @@ async function fetchYahooChart(symbol, range){
   }
   return {
     currency: (meta.currency || '').toUpperCase(),
+    exchangeTz: meta.exchangeTimezoneName || '',   // e.g. "America/New_York" - so the day label uses exchange time
     price: meta.regularMarketPrice,
     prevClose: meta.chartPreviousClose,
     points
@@ -374,6 +390,7 @@ async function getChartAUD(symbol, range){
       points: c.points.map(p => ({ t: p.t, c: p.c * rate })),
       price: (c.price || (c.points.length && c.points[c.points.length - 1].c) || 0) * rate,
       prevClose: (c.prevClose || 0) * rate,
+      exchangeTz: c.exchangeTz || '',
       src: 'live', currency: conv ? c.currency + '\u2192AUD' : (c.currency || 'AUD')
     };
     if (!out.prevClose && out.points.length) out.prevClose = out.points[0].c;
@@ -460,16 +477,27 @@ function money(v){ return Math.abs(v) >= 1000 ? AUD0.format(v) : AUD2.format(v);
 function priceStr(v){ const dp = v < 20 ? 3 : (v < 2000 ? 2 : 0); return '$' + v.toLocaleString('en-AU',{minimumFractionDigits:dp,maximumFractionDigits:dp}); }
 
 // "Today" / "Yesterday" / "Last Friday" / "3 Aug" for the date of a quote,
-// relative to the local calendar day (mirrors Google Finance's label).
-function relativeDay(ts){
+// judged in the EXCHANGE's timezone (so a US close that lands after midnight
+// AEST still reads "Last Friday", not "Last Saturday"). Falls back to the
+// device's local timezone when tz is unknown.
+function ymdInTZ(date, tz){
+  try{
+    return new Intl.DateTimeFormat('en-CA',
+      { timeZone: tz || undefined, year: 'numeric', month: '2-digit', day: '2-digit' }).format(date);
+  }catch(e){
+    return new Intl.DateTimeFormat('en-CA', { year: 'numeric', month: '2-digit', day: '2-digit' }).format(date);
+  }
+}
+function relativeDay(ts, tz){
   if (!ts) return '';
-  const d = new Date(ts * 1000), now = new Date();
-  const startOf = x => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
-  const days = Math.round((startOf(now) - startOf(d)) / 86400000);
+  const d = new Date(ts * 1000);
+  const dY = ymdInTZ(d, tz), nY = ymdInTZ(new Date(), tz);
+  const days = Math.round((Date.parse(nY + 'T00:00:00Z') - Date.parse(dY + 'T00:00:00Z')) / 86400000);
   if (days <= 0) return 'Today';
   if (days === 1) return 'Yesterday';
-  if (days <= 6) return 'Last ' + d.toLocaleDateString('en-AU', { weekday: 'long' });
-  return d.toLocaleDateString('en-AU', { day: 'numeric', month: 'short' });
+  const opt = tz ? { timeZone: tz } : {};
+  if (days <= 6) return 'Last ' + d.toLocaleDateString('en-AU', { ...opt, weekday: 'long' });
+  return d.toLocaleDateString('en-AU', { ...opt, day: 'numeric', month: 'short' });
 }
 
 function axisLabels(points, range){
@@ -567,7 +595,10 @@ async function loadCard(card){
   const badge = data.src === 'sample' ? '<span class="badge sample">SAMPLE</span>'
               : data.src === 'cached' ? `<span class="badge cached">cached ${new Date(data.at||Date.now()).toLocaleTimeString('en-AU',{hour:'numeric',minute:'2-digit'})}</span>`
               : '';
-  const dayLbl = relativeDay(data.points.length ? data.points[data.points.length - 1].t : 0);
+  if (data.src !== 'live')
+    setStatus('⚠ Live feed unavailable — showing ' + (data.src === 'cached' ? 'last saved' : 'sample') +
+              ' data.' + (state.relay ? '' : ' Add a data relay in Settings.'));
+  const dayLbl = relativeDay(data.points.length ? data.points[data.points.length - 1].t : 0, data.exchangeTz);
   qEl.innerHTML =
     `<span class="price">${priceStr(last)}</span>` +
     `<span class="chg ${up?'up':'down'}">${up?'+':''}${pct.toFixed(2)}% (${up?'+':''}${chg.toFixed(dp)})</span>` +
@@ -675,6 +706,13 @@ function renderSettings(){
       <div class="fld"><label>Superannuation ($)</label><input type="number" step="any" id="superann" value="${state.superann}"></div>
     </div>
     <div class="setgrp">
+      <h3>Data relay (fixes the price feed)</h3>
+      <span class="hint">The free public relays are unreliable. Deploy the one-file Cloudflare Worker (see WORKER.md in the repo — free, ~10 min) and paste its URL here. It's tried first and makes Markets + Portfolio prices reliable. Leave blank to keep using the public relays.</span>
+      <input class="txt" id="relayUrl" style="width:100%" placeholder="https://dsr-yahoo.YOUR-NAME.workers.dev" value="${state.relay || ''}">
+      <div class="btnrow"><button class="ghost" id="testRelay">Test relay</button></div>
+      <div class="msg" id="relayMsg"></div>
+    </div>
+    <div class="setgrp">
       <h3>Property &mdash; 6 Reading St</h3>
       <span class="hint">Listing URL</span>
       <input class="txt" id="houseUrl" style="width:100%" value="${state.house.url}">
@@ -742,6 +780,23 @@ function renderSettings(){
     }
   };
 
+  const rmsg = $('#relayMsg');
+  $('#testRelay').onclick = async () => {
+    const prev = state.relay;
+    state.relay = $('#relayUrl').value.trim();
+    rmsg.className = 'msg'; rmsg.textContent = 'Testing…';
+    try{
+      const q = await fetchYahooChart('NDQ.AX', '1D');
+      rmsg.className = 'msg ok';
+      rmsg.textContent = state.relay
+        ? 'Relay works — NDQ.AX ' + priceStr(q.price || 0) + '. Tap Save.'
+        : 'Public relays work right now — NDQ.AX ' + priceStr(q.price || 0) + '.';
+    }catch(e){
+      rmsg.className = 'msg err'; rmsg.textContent = 'No response through ' + (state.relay || 'the public relays') + '.';
+    }
+    state.relay = prev;
+  };
+
   $('#saveSet').onclick = () => {
     state.markets = [...mktrows.querySelectorAll('.mktrow')].map(r => ({
       symbol: r.querySelector('.s').value.trim(),
@@ -751,6 +806,7 @@ function renderSettings(){
     state.p2 = { NDQ: +$('#p2ndq').value || 0, IOO: +$('#p2ioo').value || 0 };
     state.margin = +$('#margin').value || 0;
     state.superann = +$('#superann').value || 0;
+    state.relay = $('#relayUrl').value.trim();
     const hp = extractDollarAmount($('#housePrice').value) || $('#housePrice').value.trim();
     state.house = {
       url: $('#houseUrl').value.trim() || DEFAULTS.house.url,
@@ -767,6 +823,7 @@ function renderSettings(){
     state.p1 = { ...DEFAULTS.p1 }; state.p2 = { ...DEFAULTS.p2 };
     state.margin = DEFAULTS.margin; state.superann = DEFAULTS.superann;
     state.house = { ...DEFAULTS.house };
+    // note: the data relay URL is deliberately NOT reset here
     state.crypto = Object.fromEntries(CRYPTO_DEFS.map(c => [c[1], c[3]]));
     saveState();
     renderSettings();
