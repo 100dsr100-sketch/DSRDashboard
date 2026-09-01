@@ -171,7 +171,7 @@
       <circle cx="54" cy="16" r="3" fill="#22c55e"/>
     </svg>
     <h1>DSR Dashboard</h1>
-    <span class="version">Version 1g</span>
+    <span class="version">Version 1h</span>
   </div>
 
   <div class="nav">
@@ -273,7 +273,7 @@ const DEFAULTS = {
 // interval -> Yahoo params, from UMiniStockChart.MiniIntervalYahooParams
 const RANGES = ['1D','5D','1M','6M','YTD','1Y','5Y','Max'];
 const RANGE_MAP = {
-  '1D' : { i:'1m',  r:'1d',  days:1 },
+  '1D' : { i:'1m',  r:'5d',  days:1 },   // 5d (not 1d) so a closed market still returns the last session
   '5D' : { i:'5m',  r:'1mo', days:5 },
   '1M' : { i:'30m', r:'1mo', days:0 },
   '6M' : { i:'1h',  r:'6mo', days:0 },
@@ -393,6 +393,7 @@ async function getChartAUD(symbol, range){
   const key = symbol + '|' + range;
   try{
     const c = await fetchYahooChart(symbol, range);
+    if (!c.points || !c.points.length) throw new Error('empty series');   // -> fall back to cache/sample, never leave "Loading"
     let rate = 1, conv = false;
     if (c.currency && c.currency !== 'AUD' && !/=X$/i.test(symbol)){
       const r = await fxToAUD(c.currency);
@@ -605,10 +606,7 @@ function readCachedChart(symbol, range){
 
 function paintCard(card, data, range, symbol){
   const qEl = card.querySelector('.quote'), cEl = card.querySelector('.chartwrap');
-  if (!data || !data.points || !data.points.length){
-    qEl.innerHTML = '<span class="when">Loading&hellip;</span>';
-    return;
-  }
+  if (!data || !data.points || !data.points.length) return;   // keep whatever's shown; getChartAUD guarantees non-empty
   const last = data.price, pc = data.prevClose || (data.points[0] && data.points[0].c) || last;
   const chg = last - pc, pct = pc ? chg / pc * 100 : 0, up = chg >= 0;
   const dp = last < 20 ? 3 : 2;
