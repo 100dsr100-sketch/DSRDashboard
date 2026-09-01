@@ -6,4 +6,4 @@ workers_dev = true
 # `npx wrangler kv namespace create KV` prints an id - paste it below.
 [[kv_namespaces]]
 binding = "KV"
-id = "PASTE_KV_NAMESPACE_ID_HERE"
+id = "e76577f16bc544c98465129d32e616c3"
