@@ -1,2 +1,4 @@
 worker/.wrangler/
+worker-data/.wrangler/
 node_modules/
+.claude/

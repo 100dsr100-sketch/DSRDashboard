@@ -171,7 +171,7 @@
       <circle cx="54" cy="16" r="3" fill="#22c55e"/>
     </svg>
     <h1>DSR Dashboard</h1>
-    <span class="version">Version 1i</span>
+    <span class="version">Version 1j</span>
   </div>
 
   <div class="nav">
@@ -292,6 +292,7 @@ const state = {
   superann: LS.get('dsr-dash-super', DEFAULTS.superann),
   house:    LS.get('dsr-dash-house', { ...DEFAULTS.house }),
   relay:    LS.get('dsr-dash-relay', 'https://dsr-yahoo.100dsr100.workers.dev'),
+  syncUrl:  LS.get('dsr-dash-syncurl', ''),   // desktop app's private balances store; paste once, device-local
   crypto:   LS.get('dsr-dash-crypto', Object.fromEntries(CRYPTO_DEFS.map(c => [c[1], c[3]])))
 };
 function saveState(){
@@ -302,6 +303,7 @@ function saveState(){
   LS.set('dsr-dash-super', state.superann);
   LS.set('dsr-dash-house', state.house);
   LS.set('dsr-dash-relay', state.relay);
+  LS.set('dsr-dash-syncurl', state.syncUrl);
   LS.set('dsr-dash-crypto', state.crypto);
 }
 
@@ -461,6 +463,47 @@ async function fetchHousePrice(url){
   const r = scrapePriceFromText(txt);
   if (!r.amount) throw new Error('no price found in page (likely a bot-check page) - use paste box');
   return r;
+}
+
+/* ---- PC sync: pull house price / super / margin from the desktop app ----
+   The Lazarus Dashboard POSTs these three to its private Cloudflare Worker
+   (dsr-dash-data) on every Settings save. We pull them on launch and on
+   demand. The full URL (incl. the secret path segment) is entered once in
+   Settings and kept only in localStorage - never in this public repo.
+   The PC is the source of truth for these three: a newer generatedAt
+   overwrites whatever's local. Returns a short status string. */
+async function pullFromPC(manual){
+  const u = (state.syncUrl || '').trim();
+  if (!u){ return manual ? 'Add the PC sync URL in Settings first.' : ''; }
+  let d;
+  try{
+    d = await fetch(u, { cache: 'no-store' }).then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); });
+  }catch(e){
+    return manual ? 'Could not reach the PC sync store.' : '';
+  }
+  if (!d || !d.generatedAt) return manual ? 'Nothing published from the PC yet.' : '';
+  const last = LS.get('dsr-dash-synced-at', 0);
+  if (d.generatedAt <= last && !manual) return '';        // already applied this (or older)
+
+  let changed = false;
+  if (typeof d.house === 'string' && d.house.trim()){
+    const hp = extractDollarAmount(d.house) || d.house.trim();
+    if (hp !== state.house.price || state.house.isDefault){
+      state.house = { ...state.house, price: hp, isDefault: false };
+      changed = true;
+    }
+  }
+  if (d.super  != null && isFinite(+d.super)  && +d.super  !== +state.superann){ state.superann = +d.super;  changed = true; }
+  if (d.margin != null && isFinite(+d.margin) && +d.margin !== +state.margin){   state.margin   = +d.margin; changed = true; }
+  LS.set('dsr-dash-synced-at', d.generatedAt);
+  if (changed) saveState();
+
+  const when = new Date(d.generatedAt * 1000)
+    .toLocaleString('en-AU', { day:'numeric', month:'short', hour:'numeric', minute:'2-digit' });
+  const active = document.querySelector('.nav button.active');
+  if (active && active.dataset.screen === 'portfolio') renderPortfolio();
+  else if (active && active.dataset.screen === 'settings') renderSettings();
+  return (changed ? 'Synced from PC · ' : 'Already up to date · ') + when;
 }
 
 /* ---- synthetic fallback (seeded per symbol+range) ---- */
@@ -751,6 +794,13 @@ function renderSettings(){
       <div class="msg" id="relayMsg"></div>
     </div>
     <div class="setgrp">
+      <h3>PC sync &mdash; balances from the desktop app</h3>
+      <span class="hint">The desktop Dashboard pushes house price, superannuation and margin loan to its private Cloudflare Worker on every save. Paste the full sync URL (base + <code>/d/</code> + your secret) once &mdash; it stays on this device only and survives "Reset all". Leave blank to keep entering those three by hand here.</span>
+      <input class="txt" id="syncUrl" style="width:100%" placeholder="https://dsr-dash-data.100dsr100.workers.dev/d/YOUR-SECRET" value="${state.syncUrl || ''}">
+      <div class="btnrow"><button class="ghost" id="pullSync">Pull from PC now</button></div>
+      <div class="msg" id="syncMsg"></div>
+    </div>
+    <div class="setgrp">
       <h3>Property &mdash; 6 Reading St</h3>
       <span class="hint">Listing URL</span>
       <input class="txt" id="houseUrl" style="width:100%" value="${state.house.url}">
@@ -835,6 +885,18 @@ function renderSettings(){
     state.relay = prev;
   };
 
+  const smsg = $('#syncMsg');
+  $('#pullSync').onclick = async () => {
+    const prev = state.syncUrl;
+    state.syncUrl = $('#syncUrl').value.trim();
+    smsg.className = 'msg'; smsg.textContent = 'Pulling…';
+    const r = await pullFromPC(true);
+    const ok = r.startsWith('Synced') || r.startsWith('Already');
+    smsg.className = 'msg ' + (ok ? 'ok' : 'err');
+    smsg.textContent = r || 'No data.';
+    state.syncUrl = prev;   // not persisted until Save
+  };
+
   $('#saveSet').onclick = () => {
     state.markets = [...mktrows.querySelectorAll('.mktrow')].map(r => ({
       symbol: r.querySelector('.s').value.trim(),
@@ -845,6 +907,7 @@ function renderSettings(){
     state.margin = +$('#margin').value || 0;
     state.superann = +$('#superann').value || 0;
     state.relay = $('#relayUrl').value.trim();
+    state.syncUrl = $('#syncUrl').value.trim();
     const hp = extractDollarAmount($('#housePrice').value) || $('#housePrice').value.trim();
     state.house = {
       url: $('#houseUrl').value.trim() || DEFAULTS.house.url,
@@ -861,7 +924,7 @@ function renderSettings(){
     state.p1 = { ...DEFAULTS.p1 }; state.p2 = { ...DEFAULTS.p2 };
     state.margin = DEFAULTS.margin; state.superann = DEFAULTS.superann;
     state.house = { ...DEFAULTS.house };
-    // note: the data relay URL is deliberately NOT reset here
+    // note: the data relay URL and the PC sync URL are deliberately NOT reset here
     state.crypto = Object.fromEntries(CRYPTO_DEFS.map(c => [c[1], c[3]]));
     saveState();
     renderSettings();
@@ -914,6 +977,10 @@ if ('serviceWorker' in navigator){
 }
 
 show('markets');
+
+// Pull the desktop app's latest house price / super / margin (if a PC sync URL
+// is configured). Fire-and-forget; refreshes the current screen if they changed.
+pullFromPC(false).then(msg => { if (msg) setStatus(msg); });
 </script>
 </body>
 </html>

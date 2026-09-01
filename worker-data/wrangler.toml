@@ -1,0 +1,9 @@
+name = "dsr-dash-data"
+main = "worker.js"
+compatibility_date = "2024-09-01"
+workers_dev = true
+
+# `npx wrangler kv namespace create KV` prints an id - paste it below.
+[[kv_namespaces]]
+binding = "KV"
+id = "PASTE_KV_NAMESPACE_ID_HERE"
