@@ -171,7 +171,7 @@
       <circle cx="54" cy="16" r="3" fill="#22c55e"/>
     </svg>
     <h1>DSR Dashboard</h1>
-    <span class="version">Version 1h</span>
+    <span class="version">Version 1i</span>
   </div>
 
   <div class="nav">
@@ -489,10 +489,12 @@ const NUM  = new Intl.NumberFormat('en-AU', { maximumFractionDigits:2 });
 function money(v){ return Math.abs(v) >= 1000 ? AUD0.format(v) : AUD2.format(v); }
 function priceStr(v){ const dp = v < 20 ? 3 : (v < 2000 ? 2 : 0); return '$' + v.toLocaleString('en-AU',{minimumFractionDigits:dp,maximumFractionDigits:dp}); }
 
-// "Today" / "Yesterday" / "Last Friday" / "3 Aug" for the date of a quote,
-// judged in the EXCHANGE's timezone (so a US close that lands after midnight
-// AEST still reads "Last Friday", not "Last Saturday"). Falls back to the
-// device's local timezone when tz is unknown.
+// "Today" / "Yesterday" / "Last Friday" / "3 Aug" for the date of a quote.
+// The trading day is taken in the EXCHANGE's timezone (so a US Friday close
+// that lands Saturday-morning AEST still counts as Friday), but it's compared
+// against TODAY for the viewer in their own local timezone - so that same
+// close reads "Yesterday" when you check it on Saturday, and "Last Friday"
+// from Sunday on.
 function ymdInTZ(date, tz){
   try{
     return new Intl.DateTimeFormat('en-CA',
@@ -504,7 +506,8 @@ function ymdInTZ(date, tz){
 function relativeDay(ts, tz){
   if (!ts) return '';
   const d = new Date(ts * 1000);
-  const dY = ymdInTZ(d, tz), nY = ymdInTZ(new Date(), tz);
+  const dY = ymdInTZ(d, tz);            // trading day, in the exchange's timezone
+  const nY = ymdInTZ(new Date());       // today, in the viewer's local timezone
   const days = Math.round((Date.parse(nY + 'T00:00:00Z') - Date.parse(dY + 'T00:00:00Z')) / 86400000);
   if (days <= 0) return 'Today';
   if (days === 1) return 'Yesterday';
