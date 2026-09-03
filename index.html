@@ -171,7 +171,7 @@
       <circle cx="54" cy="16" r="3" fill="#22c55e"/>
     </svg>
     <h1>DSR Dashboard</h1>
-    <span class="version">Version 1k</span>
+    <span class="version">Version 1l</span>
   </div>
 
   <div class="nav">
@@ -260,7 +260,7 @@ const CRYPTO_DEFS = [
 
 const DEFAULTS = {
   p1: { NDQ: 4077, IOO: 325 },
-  p2: { NDQ: 1287, IOO: 51 },
+  p2: { NDQ: 1287, IOO: 51, SEMI: 0 },   // SEMI.AX = Global X Semiconductor ETF (Portfolio 2 only)
   margin: 259654.79,
   superann: 575640.06,
   house: {
@@ -510,7 +510,7 @@ async function pullFromPC(manual){
 /* ---- synthetic fallback (seeded per symbol+range) ---- */
 function mulberry32(a){ return function(){ a|=0; a=a+0x6D2B79F5|0; let t=Math.imul(a^a>>>15,1|a); t=t+Math.imul(t^t>>>7,61|t)^t; return ((t^t>>>14)>>>0)/4294967296; }; }
 function hashStr(s){ let h=2166136261; for(let i=0;i<s.length;i++){ h^=s.charCodeAt(i); h=Math.imul(h,16777619); } return h>>>0; }
-const SAMPLE_BASE = { '^IXIC': 26800, 'NDQ.AX': 59.41, 'IOO.AX': 165.2, 'SOXX': 385 };
+const SAMPLE_BASE = { '^IXIC': 26800, 'NDQ.AX': 59.41, 'IOO.AX': 165.2, 'SOXX': 385, 'SEMI.AX': 34 };
 function sampleSeries(symbol, range){
   const cfg = { '1D':[78,.0016], '5D':[120,.004], '1M':[130,.006], '6M':[150,.009],
                 'YTD':[160,.010], '1Y':[170,.011], '5Y':[200,.015], 'Max':[220,.017] }[range] || [78,.0016];
@@ -696,15 +696,17 @@ async function renderPortfolio(){
   const wrap = $('#screen-portfolio');
   wrap.innerHTML = '<div class="pcard"><h3>Fetching prices&hellip;</h3></div>';
 
-  let ndq = 0, ioo = 0, cryptoPrices = {};
+  let ndq = 0, ioo = 0, semi = 0, cryptoPrices = {};
   const results = await Promise.allSettled([
     getChartAUD('NDQ.AX', '1D'),
     getChartAUD('IOO.AX', '1D'),
-    fetchCryptoAUD(CRYPTO_DEFS.map(c => c[2]))
+    fetchCryptoAUD(CRYPTO_DEFS.map(c => c[2])),
+    getChartAUD('SEMI.AX', '1D')          // Portfolio 2 only
   ]);
   if (results[0].status === 'fulfilled') ndq = results[0].value.price;
   if (results[1].status === 'fulfilled') ioo = results[1].value.price;
   if (results[2].status === 'fulfilled') cryptoPrices = results[2].value;
+  if (results[3].status === 'fulfilled') semi = results[3].value.price;
 
   const cryptoRows = CRYPTO_DEFS.map(c => {
     const units = +state.crypto[c[1]] || 0;
@@ -716,18 +718,20 @@ async function renderPortfolio(){
   const pv = p => ({
     ndqVal: (+p.NDQ || 0) * ndq,
     iooVal: (+p.IOO || 0) * ioo,
-    get total(){ return this.ndqVal + this.iooVal; }
+    semiVal: (+p.SEMI || 0) * semi,   // 0 for Portfolio 1 (no SEMI key)
+    get total(){ return this.ndqVal + this.iooVal + this.semiVal; }
   });
   const v1 = pv(state.p1), v2 = pv(state.p2);
   const stocksTotal = v1.total + v2.total;
   const houseVal = parseFloat(String(state.house.price).replace(/[^0-9.]/g, '')) || 0;
   const net = stocksTotal + cryptoTotal + houseVal + (+state.superann || 0) - (+state.margin || 0);
 
-  const portCard = (title, p, v) => `
+  const portCard = (title, p, v, showSemi) => `
     <div class="pcard">
       <h3>${title}</h3>
       <div class="pline"><span class="lbl">NDQ.AX &times; ${NUM.format(+p.NDQ||0)} @ ${priceStr(ndq||0)}</span><span class="val">${money(v.ndqVal)}</span></div>
       <div class="pline"><span class="lbl">IOO.AX &times; ${NUM.format(+p.IOO||0)} @ ${priceStr(ioo||0)}</span><span class="val">${money(v.iooVal)}</span></div>
+      ${showSemi ? `<div class="pline"><span class="lbl">SEMI.AX &times; ${NUM.format(+p.SEMI||0)} @ ${priceStr(semi||0)}</span><span class="val">${money(v.semiVal)}</span></div>` : ''}
       <div class="pline total"><span class="lbl">Portfolio total</span><span class="val">${money(v.total)}</span></div>
     </div>`;
 
@@ -736,8 +740,8 @@ async function renderPortfolio(){
   const restVal = cryptoRows.slice(10).reduce((s, r) => s + r.val, 0);
 
   wrap.innerHTML =
-    portCard('Portfolio 1', state.p1, v1) +
-    portCard('Portfolio 2', state.p2, v2) +
+    portCard('Portfolio 1', state.p1, v1, false) +
+    portCard('Portfolio 2', state.p2, v2, true) +
     `<div class="pcard">
        <h3>Crypto Portfolio</h3>
        <div class="pline"><span class="lbl">${CRYPTO_DEFS.length} coins</span><span class="val"></span></div>
@@ -781,6 +785,7 @@ function renderSettings(){
       <h3>Portfolio 2 &mdash; units held</h3>
       <div class="fld"><label>NDQ.AX</label><input type="number" step="any" id="p2ndq" value="${state.p2.NDQ}"></div>
       <div class="fld"><label>IOO.AX</label><input type="number" step="any" id="p2ioo" value="${state.p2.IOO}"></div>
+      <div class="fld"><label>SEMI.AX</label><input type="number" step="any" id="p2semi" value="${state.p2.SEMI || 0}"></div>
     </div>
     <div class="setgrp">
       <h3>Other balances</h3>
@@ -906,7 +911,7 @@ function renderSettings(){
       name: r.querySelector('.n').value.trim() || r.querySelector('.s').value.trim()
     })).filter(m => m.symbol);
     state.p1 = { NDQ: +$('#p1ndq').value || 0, IOO: +$('#p1ioo').value || 0 };
-    state.p2 = { NDQ: +$('#p2ndq').value || 0, IOO: +$('#p2ioo').value || 0 };
+    state.p2 = { NDQ: +$('#p2ndq').value || 0, IOO: +$('#p2ioo').value || 0, SEMI: +$('#p2semi').value || 0 };
     state.margin = +$('#margin').value || 0;
     state.superann = +$('#superann').value || 0;
     state.relay = $('#relayUrl').value.trim();
