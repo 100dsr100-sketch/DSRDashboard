@@ -1,4 +1,5 @@
 {
+  "id": "/",
   "name": "DSR Dashboard",
   "short_name": "DSR Dashboard",
   "start_url": "./index.html",
