@@ -3,7 +3,7 @@
    gets the latest index.html / assets, and the cache is only a fallback
    for going offline. (The old v1 cache was cache-first, which is why a
    deployed update could stay invisible - hence the version bump here.) */
-const CACHE = 'dsr-dash-v3';
+const CACHE = 'dsr-dash-v4';
 const OWN = 'dsr-dash-';   // only ever delete THIS app's old caches – every DSR app shares the github.io origin's cache storage
 const SHELL = ['./', './index.html', './icon.svg', './manifest.json'];
 
